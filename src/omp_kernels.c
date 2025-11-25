@@ -3,8 +3,13 @@
 // Member 1 responsible
 
 #include "kernels.h"
-#include <omp.h>
 #include <stdlib.h>
+
+// Include omp.h only when OpenMP is enabled; otherwise these
+// functions compile as serial fallbacks.
+#ifdef _OPENMP
+#include <omp.h>
+#endif
 
 // ========== NAIVE MATRIX MULTIPLICATION (OpenMP) ==========
 void matmul_omp(double *A, double *B, double *C, int n) {

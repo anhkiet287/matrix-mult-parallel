@@ -28,6 +28,8 @@ int mpi_get_size();
 // Master-worker distributed matrix multiplication
 // Master (rank 0) distributes work to all workers
 // Each worker computes partial result using provided kernel
+// Note: Partial blocks currently use the naive triple-loop; if only one
+// process participates (np=1), the provided kernel is used directly.
 // Master collects and assembles final result
 // Parameters:
 //   A, B, C: matrices (only master needs full A, B; all need C buffer)
