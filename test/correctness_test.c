@@ -74,7 +74,7 @@ int main() {
     total++;
     passed += test_kernel("matmul_omp", matmul_omp, A, B, expected, TEST_SIZE);
     
-    // Add more tests for strassen, proposed when implemented
+    // TODO: Add tests for strassen_serial/strassen_omp and proposed_* when implemented
     
     printf("\n=== Results: %d/%d tests passed ===\n", passed, total);
     

@@ -13,20 +13,24 @@
 #endif
 
 void mpi_init(int *argc, char ***argv) {
+    // Initialize the MPI runtime
     MPI_Init(argc, argv);
 }
 
 void mpi_finalize() {
+    // Finalize the MPI runtime
     MPI_Finalize();
 }
 
 int mpi_get_rank() {
+    // Return the rank (ID) of the current process
     int rank;
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     return rank;
 }
 
 int mpi_get_size() {
+    // Return total number of processes in MPI_COMM_WORLD
     int size;
     MPI_Comm_size(MPI_COMM_WORLD, &size);
     return size;
@@ -38,7 +42,7 @@ void mpi_broadcast_matrix(double *matrix, int n, int root) {
 }
 
 void mpi_scatter_rows(double *matrix, double *local_matrix, int n, int local_rows, int root) {
-    // Scatter rows from master to workers
+    // Scatter rows from master to workers (fixed row count per rank)
     // Each process receives local_rows * n elements
     MPI_Scatter(matrix, local_rows * n, MPI_DOUBLE,
                 local_matrix, local_rows * n, MPI_DOUBLE,
@@ -46,7 +50,7 @@ void mpi_scatter_rows(double *matrix, double *local_matrix, int n, int local_row
 }
 
 void mpi_gather_rows(double *local_matrix, double *matrix, int n, int local_rows, int root) {
-    // Gather rows from workers to master
+    // Gather rows from workers to master (fixed row count per rank)
     // Master assembles complete matrix
     MPI_Gather(local_matrix, local_rows * n, MPI_DOUBLE,
                matrix, local_rows * n, MPI_DOUBLE,
@@ -62,6 +66,7 @@ static void compute_block(kernel_func_t kernel,
                           double *local_C,
                           int local_rows,
                           int n) {
+    // Compute local_C = local_A * B for a subset of rows
     if (local_rows == 0) {
         return;
     }
@@ -104,6 +109,7 @@ static void compute_block(kernel_func_t kernel,
 }
 
 void mpi_matmul_master_worker(double *A, double *B, double *C, int n, kernel_func_t kernel) {
+    // Master-worker driver: scatter A, broadcast B, compute partial C, gather results
     int rank = mpi_get_rank();
     int size = mpi_get_size();
 

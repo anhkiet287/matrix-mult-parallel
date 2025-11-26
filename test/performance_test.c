@@ -65,7 +65,7 @@ int main() {
         
         benchmark_kernel("matmul_serial", matmul_serial, n);
         benchmark_kernel("matmul_omp", matmul_omp, n);
-        // Add more benchmarks when implemented
+        // TODO: Add benchmarks for strassen_serial/strassen_omp and proposed_* when implemented
         
         printf("\n");
     }
