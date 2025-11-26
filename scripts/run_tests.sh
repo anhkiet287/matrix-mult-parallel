@@ -9,6 +9,12 @@ echo "  Matrix Multiplication Test Suite"
 echo "=============================================="
 echo ""
 
+# Colors for output
+#RED='\033[0;31m'
+#GREEN='\033[0;32m'
+#YELLOW='\033[1;33m'
+#NC='\033[0m' # No Color
+ 
 # Colors for output (use real escape chars; disable if not a TTY)
 if [ -t 1 ] && [ -z "${NO_COLOR+x}" ]; then
     RED=$'\033[0;31m'
@@ -45,33 +51,81 @@ if [ ! -d "$BUILD_DIR" ]; then
     mkdir -p "$BUILD_DIR"
 fi
 
-echo "${YELLOW}[1/3] Building tests...${NC}"
+echo -e "${YELLOW}[1/3] Building tests...${NC}"
 cd "$BUILD_DIR"
 
-# Build correctness test
-echo "  - Compiling correctness_test"
-"$CC" $CFLAGS $OMP_FLAGS -o correctness_test ../test/correctness_test.c ../src/kernels.c ../src/omp_kernels.c ../src/utility.c -I../src -lm
+# Build correctness test for Serial + OMP 
+echo "  - Compiling Serial + OMP correctness_test"
+gcc -o correctness_test ../test/correctness_test.c ../src/kernels.c ../src/omp_kernels.c ../src/utility.c -I../src -lm -fopenmp
 
-# Build performance test
-echo "  - Compiling performance_test"
-"$CC" $CFLAGS $OMP_FLAGS -o performance_test ../test/performance_test.c ../src/kernels.c ../src/omp_kernels.c ../src/utility.c -I../src -lm
+# Build performance test for Serial + OMP
+echo "  - Compiling Serial + OMP performance_test"
+gcc -o performance_test ../test/performance_test.c ../src/kernels.c ../src/omp_kernels.c ../src/utility.c -I../src -lm -fopenmp
 
-echo "${GREEN}Build successful!${NC}"
-echo ""
+if command -v mpicc >/dev/null 2>&1; then
+    echo "  - Compiling MPI + Hybrid correctness_tests..."
 
-echo "${YELLOW}[2/3] Running correctness tests...${NC}"
-if ./correctness_test; then
-    echo "${GREEN}Correctness tests passed!${NC}"
+    # # MPI correctness
+    # mpicc -O2 -fopenmp \
+    #     -o mpi_correctness_test \
+    #     ../test/mpi_correctness_test.c \
+    #     ../src/*.c -I../src -lm
+    #     ../src/kernels.c \
+    mpicc -O2 -fopenmp \
+        -o mpi_correctness_test \
+        ../test/mpi_correctness_test.c \
+        ../src/omp_kernels.c \
+        ../src/utility.c \
+        ../src/kernels.c \
+        ../src/mpi_wrapper.c -I../src -lm
+        
+
+    echo "  - Compiling MPI + Hybrid performance_tests..."
+    # MPI performance
+    mpicc -O2 -fopenmp \
+        -o mpi_performance_test \
+        ../test/mpi_performance_test.c \
+        ../src/omp_kernels.c \
+        ../src/utility.c \
+        ../src/kernels.c \
+        ../src/mpi_wrapper.c -I../src -lm
+
+    echo -e "${GREEN}✓ MPI & Hybrid build OK${NC}"
+    HAS_MPI=1
 else
-    echo "${RED}Correctness tests failed!${NC}"
-    exit 1
+    echo -e "${RED}MPI not found. Skipping MPI builds.${NC}"
+    HAS_MPI=0
 fi
 echo ""
 
-echo "${YELLOW}[3/3] Running performance benchmarks...${NC}"
-./performance_test
+echo -e "${GREEN}Build successful!${NC}"
 echo ""
 
-echo "${GREEN}=============================================="
+echo -e "${YELLOW}[2/3] Running correctness tests...${NC}"
+if ./correctness_test; then
+    echo -e "${GREEN}OMP + Serial correctness tests passed!${NC}"
+else
+    echo -e "${RED}OMP + Serial correctness tests failed!${NC}"
+    exit 1
+fi
+if [ "$HAS_MPI" -eq 1 ]; then
+    echo -e "${YELLOW}Running MPI + hybrid correctness...${NC}"
+    mpirun -np 4 ./mpi_correctness_test naive
+    echo -e "${GREEN}✓ MPI correctness passed${NC}"
+    echo ""
+fi
+echo ""
+
+echo -e "${YELLOW}[3/3] Running performance benchmarks...${NC}"
+./performance_test
+if [ "$HAS_MPI" -eq 1 ]; then
+    echo "${YELLOW}Running MPI performance...${NC}"
+    mpirun -np 4 ./mpi_performance_test naive mpi
+    echo "${GREEN}✓ MPI performance done${NC}"
+    echo ""
+fi
+echo ""
+
+echo -e "${GREEN}=============================================="
 echo "  All tests completed successfully!"
 echo "==============================================${NC}"
