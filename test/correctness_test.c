@@ -8,9 +8,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
-
+#include <string.h>
 #define TEST_SIZE 128
 #define TOLERANCE 1e-6
+int is_placeholder(double *C_test, double *C_ref, int n) {
+    return matrix_compare(C_test, C_ref, n, 1e-12); 
+}
 
 int test_kernel(const char *name, void (*kernel)(double*, double*, double*, int), 
                 double *A, double *B, double *expected, int n) {
