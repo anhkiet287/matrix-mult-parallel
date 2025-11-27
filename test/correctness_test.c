@@ -8,9 +8,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
-
+#include <string.h>
 #define TEST_SIZE 128
 #define TOLERANCE 1e-6
+int is_placeholder(double *C_test, double *C_ref, int n) {
+    return matrix_compare(C_test, C_ref, n, 1e-12); 
+}
 
 int test_kernel(const char *name, void (*kernel)(double*, double*, double*, int), 
                 double *A, double *B, double *expected, int n) {
@@ -37,6 +40,48 @@ int test_kernel(const char *name, void (*kernel)(double*, double*, double*, int)
     
     matrix_free(C);
     return result;
+}
+void run_single_test(const char *name,
+                     void (*kernel)(double*, double*, double*, int),
+                     double *A, double *B, double *baseline, int n,
+                     int *total, int *passed)
+{
+    printf("Testing %-20s ... ", name);
+    (*total)++;
+
+    double *C = matrix_allocate(n);
+    matrix_zero_init(C, n);
+
+    kernel(A, B, C, n);
+    int ok = matrix_compare(C, baseline, n, TOLERANCE);
+
+    if (ok) {
+        printf("PASSED");
+
+        // Detect placeholder (Strassen/proposed not implemented)
+        if (strcmp(name, "strassen_serial") == 0 ||
+            strcmp(name, "strassen_omp") == 0 ||
+            strcmp(name, "proposed_serial") == 0 ||
+            strcmp(name, "proposed_omp") == 0)
+        {
+            if (is_placeholder(C, baseline, n)) {
+                printf("  ⚠ WARNING: placeholder implementation detected\n");
+            } else {
+                printf("\n");
+            }
+        } else {
+            printf("\n");
+        }
+
+        (*passed)++;
+    } 
+    else {
+        printf("FAILED ❌\n");
+        printf("  Expected checksum: %f\n", matrix_checksum(baseline, n));
+        printf("  Got checksum     : %f\n", matrix_checksum(C, n));
+    }
+
+    matrix_free(C);
 }
 
 int main() {
@@ -68,14 +113,25 @@ int main() {
     int passed = 0;
     int total = 0;
     
-    total++;
-    passed += test_kernel("matmul_serial", matmul_serial, A, B, expected, TEST_SIZE);
+    // total++;
+    // passed += test_kernel("matmul_serial", matmul_serial, A, B, expected, TEST_SIZE);
     
-    total++;
-    passed += test_kernel("matmul_omp", matmul_omp, A, B, expected, TEST_SIZE);
+    // total++;
+    // passed += test_kernel("matmul_omp", matmul_omp, A, B, expected, TEST_SIZE);
     
     // TODO: Add tests for strassen_serial/strassen_omp and proposed_* when implemented
-    
+     // === NAIVE ===
+    run_single_test("matmul_serial",       matmul_serial,  A, B, expected, TEST_SIZE, &total, &passed);
+    run_single_test("matmul_omp",          matmul_omp,     A, B, expected, TEST_SIZE, &total, &passed);
+
+    // === STRASSEN ===
+    run_single_test("strassen_serial",     strassen_serial, A, B, expected, TEST_SIZE, &total, &passed);
+    run_single_test("strassen_omp",        strassen_omp,    A, B, expected, TEST_SIZE, &total, &passed);
+
+    // === PROPOSED ===
+    run_single_test("proposed_serial",     proposed_serial, A, B, expected, TEST_SIZE, &total, &passed);
+    run_single_test("proposed_omp",        proposed_omp,    A, B, expected, TEST_SIZE, &total, &passed);
+
     printf("\n=== Results: %d/%d tests passed ===\n", passed, total);
     
     // Clean up
