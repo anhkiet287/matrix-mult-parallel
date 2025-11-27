@@ -41,4 +41,13 @@ double get_wtime();
 // Sum of all elements (simple hash)
 double matrix_checksum(double *matrix, int n);
 
+// Matrix addition: C = A + B (element-wise)
+void matrix_add(double *A, double *B, double *C, int n);
+
+// Matrix subtraction: C = A - B (element-wise)
+void matrix_sub(double *A, double *B, double *C, int n);
+
+// Matrix transpose: dst = src^T
+void matrix_transpose(double *src, double *dst, int n);
+
 #endif // UTILITY_H

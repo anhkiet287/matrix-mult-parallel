@@ -83,3 +83,23 @@ double matrix_checksum(double *matrix, int n) {
     }
     return sum;
 }
+
+void matrix_add(double *A, double *B, double *C, int n) {
+    for (int i = 0; i < n * n; i++) {
+        C[i] = A[i] + B[i];
+    }
+}
+
+void matrix_sub(double *A, double *B, double *C, int n) {
+    for (int i = 0; i < n * n; i++) {
+        C[i] = A[i] - B[i];
+    }
+}
+
+void matrix_transpose(double *src, double *dst, int n) {
+    for (int i = 0; i < n; i++) {
+        for (int j = 0; j < n; j++) {
+            dst[j * n + i] = src[i * n + j];
+        }
+    }
+}
