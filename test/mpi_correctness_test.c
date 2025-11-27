@@ -1,5 +1,5 @@
 // mpi_correctness_test.c
-// Correctness test for MPI and Hybrid matrix multiplication
+// Correctness test for MPI and Hybrid matrix multiplication.
 // Usage: mpirun -np <P> ./mpi_correctness_test <algorithm> [mpi|hybrid]
 
 #include "../src/kernels.h"
