@@ -43,10 +43,10 @@ int main(int argc, char **argv) {
         mpi_finalize();
         return 1;
     }
-    
-    int n = atoi(argv[1]);
-    char *approach = argv[2];
-    char *algorithm = argv[3];
+     
+    int n = atoi(argv[1]); // size of matrix
+    char *approach = argv[2]; // name of approach (serial, openmp, mpi, hybrid)
+    char *algorithm = argv[3]; // name of algorithm (naive, strassen, proposed)
     
     // Validate input
     if (n <= 0) {

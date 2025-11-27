@@ -29,6 +29,9 @@ fi
 CC=${CC:-gcc}
 CFLAGS=${CFLAGS:-"-O2 -Wall"}
 DEFAULT_OMP_FLAGS="-fopenmp"
+MPICC=${MPICC:-mpicc}
+MPIRUN=${MPIRUN:-mpirun}
+MPI_PROCS=${MPI_PROCS:-4}
 
 # Detect OpenMP support (Apple Clang lacks -fopenmp unless libomp/GCC installed)
 if [ -z "${OMP_FLAGS+x}" ]; then
@@ -56,13 +59,13 @@ cd "$BUILD_DIR"
 
 # Build correctness test for Serial + OMP 
 echo "  - Compiling Serial + OMP correctness_test"
-gcc -o correctness_test ../test/correctness_test.c ../src/kernels.c ../src/omp_kernels.c ../src/utility.c -I../src -lm -fopenmp
+"$CC" $CFLAGS $OMP_FLAGS -o correctness_test ../test/correctness_test.c ../src/kernels.c ../src/omp_kernels.c ../src/utility.c -I../src -lm
 
 # Build performance test for Serial + OMP
 echo "  - Compiling Serial + OMP performance_test"
-gcc -o performance_test ../test/performance_test.c ../src/kernels.c ../src/omp_kernels.c ../src/utility.c -I../src -lm -fopenmp
+"$CC" $CFLAGS $OMP_FLAGS -o performance_test ../test/performance_test.c ../src/kernels.c ../src/omp_kernels.c ../src/utility.c -I../src -lm
 
-if command -v mpicc >/dev/null 2>&1; then
+if command -v "$MPICC" >/dev/null 2>&1; then
     echo "  - Compiling MPI + Hybrid correctness_tests..."
 
     # # MPI correctness
@@ -71,7 +74,7 @@ if command -v mpicc >/dev/null 2>&1; then
     #     ../test/mpi_correctness_test.c \
     #     ../src/*.c -I../src -lm
     #     ../src/kernels.c \
-    mpicc -O2 -fopenmp \
+    "$MPICC" -O2 $OMP_FLAGS \
         -o mpi_correctness_test \
         ../test/mpi_correctness_test.c \
         ../src/omp_kernels.c \
@@ -82,7 +85,7 @@ if command -v mpicc >/dev/null 2>&1; then
 
     echo "  - Compiling MPI + Hybrid performance_tests..."
     # MPI performance
-    mpicc -O2 -fopenmp \
+    "$MPICC" -O2 $OMP_FLAGS \
         -o mpi_performance_test \
         ../test/mpi_performance_test.c \
         ../src/omp_kernels.c \
@@ -110,7 +113,7 @@ else
 fi
 if [ "$HAS_MPI" -eq 1 ]; then
     echo -e "${YELLOW}Running MPI + hybrid correctness...${NC}"
-    mpirun -np 4 ./mpi_correctness_test naive
+    "$MPIRUN" -np "$MPI_PROCS" ./mpi_correctness_test naive
     echo -e "${GREEN}✓ MPI correctness passed${NC}"
     echo ""
 fi
@@ -120,7 +123,7 @@ echo -e "${YELLOW}[3/3] Running performance benchmarks...${NC}"
 ./performance_test
 if [ "$HAS_MPI" -eq 1 ]; then
     echo "${YELLOW}Running MPI performance...${NC}"
-    mpirun -np 4 ./mpi_performance_test naive mpi
+    "$MPIRUN" -np "$MPI_PROCS" ./mpi_performance_test naive mpi
     echo "${GREEN}✓ MPI performance done${NC}"
     echo ""
 fi

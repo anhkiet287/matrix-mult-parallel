@@ -10,8 +10,51 @@
 #include <stdlib.h>
 #include <string.h>
 
-static const int test_sizes[] = {256, 512, 1024};
-static const int num_sizes = sizeof(test_sizes) / sizeof(test_sizes[0]);
+// Defaults; override via env:
+// MPI_PERF_SIZES="256,512,1024", MPI_PERF_RUNS=1
+static const int default_sizes[] = {128, 256, 512, 1024};
+static const int default_num_sizes = sizeof(default_sizes) / sizeof(default_sizes[0]);
+static int num_runs = 1;
+
+// Parse comma-separated sizes from env. Caller must free *out if non-NULL.
+static void load_sizes_from_env(const char *env_var, int **out, int *count) {
+    const char *val = getenv(env_var);
+    if (!val || !*val) {
+        *out = NULL;
+        *count = 0;
+        return;
+    }
+
+    int commas = 0;
+    for (const char *p = val; *p; p++) if (*p == ',') commas++;
+    int max_sizes = commas + 1;
+    int *sizes = (int *)malloc(max_sizes * sizeof(int));
+    if (!sizes) {
+        fprintf(stderr, "Warning: failed to allocate sizes array, using defaults.\n");
+        *out = NULL;
+        *count = 0;
+        return;
+    }
+
+    int idx = 0;
+    const char *start = val;
+    char *end = NULL;
+    while (*start && idx < max_sizes) {
+        long v = strtol(start, &end, 10);
+        if (start == end) break;
+        if (v > 0) sizes[idx++] = (int)v;
+        if (*end == ',') end++;
+        start = end;
+    }
+
+    if (idx == 0) {
+        free(sizes);
+        sizes = NULL;
+    }
+
+    *out = sizes;
+    *count = idx;
+}
 
 int main(int argc, char **argv) {
     mpi_init(&argc, &argv);
@@ -59,8 +102,20 @@ int main(int argc, char **argv) {
         printf("Processes: %d\n\n", size);
     }
 
-    for (int t = 0; t < num_sizes; t++) {
-        int n = test_sizes[t];
+    const char *runs_env = getenv("MPI_PERF_RUNS");
+    if (runs_env && *runs_env) {
+        int r = atoi(runs_env);
+        if (r > 0) num_runs = r;
+    }
+
+    int *sizes = NULL;
+    int num_sizes = 0;
+    load_sizes_from_env("MPI_PERF_SIZES", &sizes, &num_sizes);
+    const int *sizes_to_use = sizes ? sizes : default_sizes;
+    int sizes_count = sizes ? num_sizes : default_num_sizes;
+
+    for (int t = 0; t < sizes_count; t++) {
+        int n = sizes_to_use[t];
 
         if (rank == 0) {
             A = matrix_allocate(n);
@@ -77,15 +132,18 @@ int main(int argc, char **argv) {
         }
 
         MPI_Barrier(MPI_COMM_WORLD);
-        double start = MPI_Wtime();
 
-        mpi_matmul_master_worker(A, B, C, n, kernel);
+        double total = 0.0;
+        for (int run = 0; run < num_runs; run++) {
+            double start = MPI_Wtime();
+            mpi_matmul_master_worker(A, B, C, n, kernel);
+            double end = MPI_Wtime();
+            total += (end - start);
+        }
 
-        MPI_Barrier(MPI_COMM_WORLD);
-        double end = MPI_Wtime();
+        double sec = total / num_runs;
 
         if (rank == 0) {
-            double sec = end - start;
             double gflops = (2.0 * n * n * n) / (sec * 1e9);
 
             printf("Matrix %4dx%-4d: %8.4f sec, %8.2f GFLOPS\n", n, n, sec, gflops);
@@ -100,6 +158,7 @@ int main(int argc, char **argv) {
 
     if (rank == 0) printf("\nBenchmark done.\n");
 
+    free(sizes);
     mpi_finalize();
     return 0;
 }

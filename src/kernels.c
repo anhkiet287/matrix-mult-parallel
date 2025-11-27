@@ -32,28 +32,6 @@ static int next_power_of_2(int n) {
     return p;
 }
 
-// Helper: Add two submatrices: C = A + B (for submatrices of size n)
-static void add_submatrix(double *A, double *B, double *C, int n, 
-                          int rowA, int colA, int rowB, int colB, int rowC, int colC, int stride) {
-    for (int i = 0; i < n; i++) {
-        for (int j = 0; j < n; j++) {
-            C[(rowC + i) * stride + (colC + j)] = 
-                A[(rowA + i) * stride + (colA + j)] + B[(rowB + i) * stride + (colB + j)];
-        }
-    }
-}
-
-// Helper: Subtract two submatrices: C = A - B
-static void sub_submatrix(double *A, double *B, double *C, int n,
-                          int rowA, int colA, int rowB, int colB, int rowC, int colC, int stride) {
-    for (int i = 0; i < n; i++) {
-        for (int j = 0; j < n; j++) {
-            C[(rowC + i) * stride + (colC + j)] = 
-                A[(rowA + i) * stride + (colA + j)] - B[(rowB + i) * stride + (colB + j)];
-        }
-    }
-}
-
 // Helper: Copy submatrix from src to dst
 static void copy_submatrix(double *src, double *dst, int n, 
                            int rowSrc, int colSrc, int strideSrc,

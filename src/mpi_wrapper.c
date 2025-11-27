@@ -4,6 +4,7 @@
 
 #include "mpi_wrapper.h"
 #include "kernels.h"
+#include "utility.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -60,26 +61,155 @@ void mpi_gather_rows(double *local_matrix, double *matrix, int n, int local_rows
 // Internal helper to compute a block of rows locally.
 // If the block is the full matrix (np=1), defer to the chosen kernel.
 // Otherwise use a simple triple loop (OMP parallelized when available).
+#define MPI_BLOCK_SIZE 64
+
+static void matmul_blocked_transposed(double *local_A,
+                                      double *B,
+                                      double *local_C,
+                                      int local_rows,
+                                      int n,
+                                      int use_omp) {
+    if (local_rows == 0) return;
+
+    double *B_T = (double *)malloc(n * n * sizeof(double));
+    if (!B_T) {
+        // Fallback to naive multiply
+        for (int i = 0; i < local_rows * n; i++) local_C[i] = 0.0;
+        for (int i = 0; i < local_rows; i++) {
+            for (int j = 0; j < n; j++) {
+                double sum = 0.0;
+                for (int k = 0; k < n; k++) {
+                    sum += local_A[i * n + k] * B[k * n + j];
+                }
+                local_C[i * n + j] = sum;
+            }
+        }
+        return;
+    }
+
+    matrix_transpose(B, B_T, n);
+    for (int i = 0; i < local_rows * n; i++) {
+        local_C[i] = 0.0;
+    }
+
+#ifdef _OPENMP
+    if (use_omp) {
+        #pragma omp parallel for collapse(2) schedule(static)
+        for (int ii = 0; ii < local_rows; ii += MPI_BLOCK_SIZE) {
+            for (int jj = 0; jj < n; jj += MPI_BLOCK_SIZE) {
+                int i_end = (ii + MPI_BLOCK_SIZE < local_rows) ? ii + MPI_BLOCK_SIZE : local_rows;
+                int j_end = (jj + MPI_BLOCK_SIZE < n) ? jj + MPI_BLOCK_SIZE : n;
+                for (int kk = 0; kk < n; kk += MPI_BLOCK_SIZE) {
+                    int k_end = (kk + MPI_BLOCK_SIZE < n) ? kk + MPI_BLOCK_SIZE : n;
+                    for (int i = ii; i < i_end; i++) {
+                        for (int j = jj; j < j_end; j++) {
+                            double sum = 0.0;
+                            for (int k = kk; k < k_end; k++) {
+                                sum += local_A[i * n + k] * B_T[j * n + k];
+                            }
+                            local_C[i * n + j] += sum;
+                        }
+                    }
+                }
+            }
+        }
+        free(B_T);
+        return;
+    }
+#endif
+
+    for (int ii = 0; ii < local_rows; ii += MPI_BLOCK_SIZE) {
+        for (int jj = 0; jj < n; jj += MPI_BLOCK_SIZE) {
+            int i_end = (ii + MPI_BLOCK_SIZE < local_rows) ? ii + MPI_BLOCK_SIZE : local_rows;
+            int j_end = (jj + MPI_BLOCK_SIZE < n) ? jj + MPI_BLOCK_SIZE : n;
+            for (int kk = 0; kk < n; kk += MPI_BLOCK_SIZE) {
+                int k_end = (kk + MPI_BLOCK_SIZE < n) ? kk + MPI_BLOCK_SIZE : n;
+                for (int i = ii; i < i_end; i++) {
+                    for (int j = jj; j < j_end; j++) {
+                        double sum = 0.0;
+                        for (int k = kk; k < k_end; k++) {
+                            sum += local_A[i * n + k] * B_T[j * n + k];
+                        }
+                        local_C[i * n + j] += sum;
+                    }
+                }
+            }
+        }
+    }
+
+    free(B_T);
+}
+
+static int kernel_is_proposed(kernel_func_t kernel) {
+    return kernel == proposed_serial || kernel == proposed_omp;
+}
+
+static int kernel_is_omp(kernel_func_t kernel) {
+    return kernel == matmul_omp ||
+           kernel == strassen_omp ||
+           kernel == proposed_omp;
+}
+
+static int kernel_is_strassen(kernel_func_t kernel) {
+    return kernel == strassen_serial || kernel == strassen_omp;
+}
+
 static void compute_block(kernel_func_t kernel,
                           double *local_A,
                           double *B,
                           double *local_C,
                           int local_rows,
                           int n) {
-    // Compute local_C = local_A * B for a subset of rows
     if (local_rows == 0) {
         return;
     }
 
-    // If there is only one process (or no partitioning), defer to the kernel directly.
     if (local_rows == n && kernel) {
         kernel(local_A, B, local_C, n);
         return;
     }
 
-    int use_omp = (kernel == matmul_omp ||
-                   kernel == strassen_omp ||
-                   kernel == proposed_omp);
+    if (kernel_is_proposed(kernel)) {
+        matmul_blocked_transposed(local_A, B, local_C, local_rows, n,
+                                  kernel == proposed_omp);
+        return;
+    }
+
+    if (kernel_is_strassen(kernel)) {
+        int padded_n = (local_rows > n) ? local_rows : n;
+        double *A_pad = matrix_allocate(padded_n);
+        double *B_pad = matrix_allocate(padded_n);
+        double *C_pad = matrix_allocate(padded_n);
+        if (!A_pad || !B_pad || !C_pad) {
+            if (A_pad) matrix_free(A_pad);
+            if (B_pad) matrix_free(B_pad);
+            if (C_pad) matrix_free(C_pad);
+        } else {
+            matrix_zero_init(A_pad, padded_n);
+            matrix_zero_init(B_pad, padded_n);
+            matrix_zero_init(C_pad, padded_n);
+
+            for (int i = 0; i < local_rows; i++) {
+                memcpy(&A_pad[i * padded_n], &local_A[i * n], n * sizeof(double));
+            }
+            for (int i = 0; i < n; i++) {
+                memcpy(&B_pad[i * padded_n], &B[i * n], n * sizeof(double));
+            }
+
+            kernel(A_pad, B_pad, C_pad, padded_n);
+
+            for (int i = 0; i < local_rows; i++) {
+                memcpy(&local_C[i * n], &C_pad[i * padded_n], n * sizeof(double));
+            }
+
+            matrix_free(A_pad);
+            matrix_free(B_pad);
+            matrix_free(C_pad);
+            return;
+        }
+    }
+
+    int use_omp = kernel_is_omp(kernel);
 
 #ifdef _OPENMP
     if (use_omp) {
