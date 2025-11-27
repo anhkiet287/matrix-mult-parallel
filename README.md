@@ -40,7 +40,7 @@ mpicc -O2 -fopenmp \
 ```
 - Linux (Ubuntu): `sudo apt install build-essential libomp-dev openmpi-bin libopenmpi-dev`, then:
 ```bash
-mpicc -O2 -fopenmp src/main.c src/mpi_wrapper.c src/kernels.c src/omp_kernels.c src/utility.c -o matmul
+mpicc -O3 -fopenmp -o matmul src/main.c src/kernels.c src/omp_kernels.c src/mpi_wrapper.c src/utility.c -lm
 ```
 - Cluster (gateway.hpcc.vn): modules may already provide OpenMPI/GCC. Typical: `module load gcc openmpi` then the Linux command above.
 
