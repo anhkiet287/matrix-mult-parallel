@@ -1,0 +1,206 @@
+==============================================
+  Combined Matrix Multiplication Test Suites
+==============================================
+
+==============================================
+  Serial + OpenMP Test Suite
+==============================================
+[build] Serial/OpenMP correctness + performance
+
+[1/2] Running correctness tests...
+=== Matrix Multiplication Correctness Test ===
+Matrix size: 256x256
+Tolerance  : 1.00e-06
+
+Computing expected result (serial)...
+Expected checksum: 4194439.388242
+
+Testing matmul_serial        ... PASSED
+Testing matmul_omp           ... PASSED
+Testing strassen_serial      ... PASSED
+Testing strassen_omp         ... PASSED
+Testing proposed_serial      ... PASSED
+Testing proposed_omp         ... PASSED
+
+=== Results: 6/6 tests passed ===
+✓ Serial/OpenMP correctness passed
+
+[2/2] Running performance benchmarks...
+=== Matrix Multiplication Performance Benchmark (Serial/OpenMP) ===
+
+Matrix size: 128x128
+algo=naive    approach=serial n=  128 nthreads= 1 time=  0.0011s gflops=    3.65 passed=true
+algo=naive    approach=openmp n=  128 nthreads= 6 time=  0.0003s gflops=   15.79 passed=true
+algo=strassen approach=serial n=  128 nthreads= 1 time=  0.0008s gflops=    5.34 passed=true
+algo=strassen approach=openmp n=  128 nthreads= 6 time=  0.0010s gflops=    4.07 passed=true
+algo=proposed approach=serial n=  128 nthreads= 1 time=  0.0008s gflops=    5.18 passed=true
+algo=proposed approach=openmp n=  128 nthreads= 6 time=  0.0003s gflops=   14.20 passed=true
+
+Matrix size: 256x256
+algo=naive    approach=serial n=  256 nthreads= 1 time=  0.0106s gflops=    3.16 passed=true
+algo=naive    approach=openmp n=  256 nthreads= 6 time=  0.0023s gflops=   14.56 passed=true
+algo=strassen approach=serial n=  256 nthreads= 1 time=  0.0058s gflops=    5.79 passed=true
+algo=strassen approach=openmp n=  256 nthreads= 6 time=  0.0021s gflops=   16.35 passed=true
+algo=proposed approach=serial n=  256 nthreads= 1 time=  0.0095s gflops=    3.53 passed=true
+algo=proposed approach=openmp n=  256 nthreads= 6 time=  0.0021s gflops=   15.90 passed=true
+
+Matrix size: 512x512
+algo=naive    approach=serial n=  512 nthreads= 1 time=  0.1182s gflops=    2.27 passed=true
+algo=naive    approach=openmp n=  512 nthreads= 6 time=  0.0269s gflops=   10.00 passed=true
+algo=strassen approach=serial n=  512 nthreads= 1 time=  0.0416s gflops=    6.45 passed=true
+algo=strassen approach=openmp n=  512 nthreads= 6 time=  0.0130s gflops=   20.59 passed=true
+algo=proposed approach=serial n=  512 nthreads= 1 time=  0.0568s gflops=    4.73 passed=true
+algo=proposed approach=openmp n=  512 nthreads= 6 time=  0.0134s gflops=   19.98 passed=true
+
+Matrix size: 1024x1024
+algo=naive    approach=serial n= 1024 nthreads= 1 time=  0.9816s gflops=    2.19 passed=true
+algo=naive    approach=openmp n= 1024 nthreads= 6 time=  0.1985s gflops=   10.82 passed=true
+algo=strassen approach=serial n= 1024 nthreads= 1 time=  0.2861s gflops=    7.50 passed=true
+algo=strassen approach=openmp n= 1024 nthreads= 6 time=  0.0862s gflops=   24.90 passed=true
+algo=proposed approach=serial n= 1024 nthreads= 1 time=  0.4416s gflops=    4.86 passed=true
+algo=proposed approach=openmp n= 1024 nthreads= 6 time=  0.0904s gflops=   23.76 passed=true
+
+Matrix size: 2048x2048
+algo=naive    approach=serial n= 2048 nthreads= 1 time= 34.7865s gflops=    0.49 passed=true
+algo=naive    approach=openmp n= 2048 nthreads= 6 time=  8.1852s gflops=    2.10 passed=true
+algo=strassen approach=serial n= 2048 nthreads= 1 time=  1.8888s gflops=    9.10 passed=true
+algo=strassen approach=openmp n= 2048 nthreads= 6 time=  0.5730s gflops=   29.98 passed=true
+algo=proposed approach=serial n= 2048 nthreads= 1 time=  3.5347s gflops=    4.86 passed=true
+algo=proposed approach=openmp n= 2048 nthreads= 6 time=  1.0902s gflops=   15.76 passed=true
+
+Benchmark complete.
+✓ Serial/OpenMP benchmarks complete
+
+==============================================
+  OpenMP suite finished successfully
+==============================================
+
+==============================================
+  MPI Test Suite
+==============================================
+[build] MPI/Hybrid correctness + performance
+
+[1/2] Running MPI correctness sweep...
+  - naive
+
+=== MPI Correctness Test (naive, mpi mode) ===
+Processes: 4
+Result: PASSED ✓
+  - strassen
+
+=== MPI Correctness Test (strassen, mpi mode) ===
+Processes: 4
+Result: PASSED ✓
+  - proposed
+
+=== MPI Correctness Test (proposed, mpi mode) ===
+Processes: 4
+Result: PASSED ✓
+✓ MPI correctness passed (naive strassen proposed)
+
+[2/2] Running MPI performance sweep...
+  - naive
+=== MPI Performance Benchmark (naive, mpi) ===
+Processes: 4
+
+algo=naive    approach=mpi    n=  128 nprocs= 4 nthreads= 1 time=  0.0004s gflops=    9.85 passed=true
+algo=naive    approach=mpi    n=  256 nprocs= 4 nthreads= 1 time=  0.0063s gflops=    5.34 passed=true
+algo=naive    approach=mpi    n=  512 nprocs= 4 nthreads= 1 time=  0.0518s gflops=    5.18 passed=true
+algo=naive    approach=mpi    n= 1024 nprocs= 4 nthreads= 1 time=  0.4739s gflops=    4.53 passed=true
+algo=naive    approach=mpi    n= 2048 nprocs= 4 nthreads= 1 time= 11.0630s gflops=    1.55 passed=true
+
+Benchmark done.
+  - strassen
+=== MPI Performance Benchmark (strassen, mpi) ===
+Processes: 4
+
+algo=strassen approach=mpi    n=  128 nprocs= 4 nthreads= 1 time=  0.0012s gflops=    3.38 passed=true
+algo=strassen approach=mpi    n=  256 nprocs= 4 nthreads= 1 time=  0.0103s gflops=    3.24 passed=true
+algo=strassen approach=mpi    n=  512 nprocs= 4 nthreads= 1 time=  0.0524s gflops=    5.12 passed=true
+algo=strassen approach=mpi    n= 1024 nprocs= 4 nthreads= 1 time=  0.3473s gflops=    6.18 passed=true
+algo=strassen approach=mpi    n= 2048 nprocs= 4 nthreads= 1 time=  2.1971s gflops=    7.82 passed=true
+
+Benchmark done.
+  - proposed
+=== MPI Performance Benchmark (proposed, mpi) ===
+Processes: 4
+
+algo=proposed approach=mpi    n=  128 nprocs= 4 nthreads= 1 time=  0.0004s gflops=    9.43 passed=true
+algo=proposed approach=mpi    n=  256 nprocs= 4 nthreads= 1 time=  0.0026s gflops=   12.74 passed=true
+algo=proposed approach=mpi    n=  512 nprocs= 4 nthreads= 1 time=  0.0203s gflops=   13.21 passed=true
+algo=proposed approach=mpi    n= 1024 nprocs= 4 nthreads= 1 time=  0.1529s gflops=   14.05 passed=true
+algo=proposed approach=mpi    n= 2048 nprocs= 4 nthreads= 1 time=  1.1226s gflops=   15.30 passed=true
+
+Benchmark done.
+✓ MPI benchmarks complete (naive strassen proposed)
+
+==============================================
+  MPI suite finished successfully
+==============================================
+
+==============================================
+  Hybrid (MPI + OpenMP) Test Suite
+==============================================
+[build] MPI/Hybrid correctness + performance
+
+[1/2] Running hybrid correctness sweep...
+  - naive
+
+=== MPI Correctness Test (naive, hybrid mode) ===
+Processes: 4
+Result: PASSED ✓
+  - strassen
+
+=== MPI Correctness Test (strassen, hybrid mode) ===
+Processes: 4
+Result: PASSED ✓
+  - proposed
+
+=== MPI Correctness Test (proposed, hybrid mode) ===
+Processes: 4
+Result: PASSED ✓
+✓ Hybrid correctness passed (naive strassen proposed)
+
+[2/2] Running hybrid performance sweep...
+  - naive
+=== MPI Performance Benchmark (naive, hybrid) ===
+Processes: 4
+
+algo=naive    approach=hybrid n=  128 nprocs= 4 nthreads= 6 time=  0.0015s gflops=    2.83 passed=true
+algo=naive    approach=hybrid n=  256 nprocs= 4 nthreads= 6 time=  0.0034s gflops=    9.78 passed=true
+algo=naive    approach=hybrid n=  512 nprocs= 4 nthreads= 6 time=  0.0322s gflops=    8.33 passed=true
+algo=naive    approach=hybrid n= 1024 nprocs= 4 nthreads= 6 time=  0.2743s gflops=    7.83 passed=true
+algo=naive    approach=hybrid n= 2048 nprocs= 4 nthreads= 6 time=  8.1058s gflops=    2.12 passed=true
+
+Benchmark done.
+  - strassen
+=== MPI Performance Benchmark (strassen, hybrid) ===
+Processes: 4
+
+algo=strassen approach=hybrid n=  128 nprocs= 4 nthreads= 6 time=  0.0029s gflops=    1.44 passed=true
+algo=strassen approach=hybrid n=  256 nprocs= 4 nthreads= 6 time=  0.0079s gflops=    4.26 passed=true
+algo=strassen approach=hybrid n=  512 nprocs= 4 nthreads= 6 time=  0.0385s gflops=    6.98 passed=true
+algo=strassen approach=hybrid n= 1024 nprocs= 4 nthreads= 6 time=  0.2659s gflops=    8.08 passed=true
+algo=strassen approach=hybrid n= 2048 nprocs= 4 nthreads= 6 time=  1.9160s gflops=    8.97 passed=true
+
+Benchmark done.
+  - proposed
+=== MPI Performance Benchmark (proposed, hybrid) ===
+Processes: 4
+
+algo=proposed approach=hybrid n=  128 nprocs= 4 nthreads= 6 time=  0.0017s gflops=    2.46 passed=true
+algo=proposed approach=hybrid n=  256 nprocs= 4 nthreads= 6 time=  0.0044s gflops=    7.65 passed=true
+algo=proposed approach=hybrid n=  512 nprocs= 4 nthreads= 6 time=  0.0206s gflops=   13.04 passed=true
+algo=proposed approach=hybrid n= 1024 nprocs= 4 nthreads= 6 time=  0.1068s gflops=   20.10 passed=true
+algo=proposed approach=hybrid n= 2048 nprocs= 4 nthreads= 6 time=  0.8092s gflops=   21.23 passed=true
+
+Benchmark done.
+✓ Hybrid benchmarks complete (naive strassen proposed)
+
+==============================================
+  Hybrid suite finished successfully
+==============================================
+
+==============================================
+  Full test matrix complete
+==============================================

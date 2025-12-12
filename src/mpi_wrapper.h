@@ -11,41 +11,51 @@
 // Allows pluggable kernel selection (serial/omp/strassen/proposed)
 typedef void (*kernel_func_t)(double *A, double *B, double *C, int n);
 
-// Initialize MPI environment
-// Call this before any MPI operations
+// mpi_init
+// Input: pointers to argc/argv from main.
+// Behavior: wraps MPI_Init so all approaches share one entry point.
+// Constraints: must be called exactly once before any MPI usage.
 void mpi_init(int *argc, char ***argv);
 
-// Finalize MPI environment
-// Call this before program exits
+// mpi_finalize
+// Behavior: wraps MPI_Finalize; call once all MPI work is done.
 void mpi_finalize();
 
-// Get current MPI rank (process ID)
+// mpi_get_rank
+// Output: integer rank in MPI_COMM_WORLD.
 int mpi_get_rank();
 
-// Get total number of MPI processes
+// mpi_get_size
+// Output: total process count participating in MPI_COMM_WORLD.
 int mpi_get_size();
 
-// Master-worker distributed matrix multiplication
-// Master (rank 0) distributes work to all workers
-// Each worker computes partial result using provided kernel
-// Note: Partial blocks currently use the naive triple-loop; if only one
-// process participates (np=1), the provided kernel is used directly.
-// Master collects and assembles final result
-// Parameters:
-//   A, B, C: matrices (only master needs full A, B; all need C buffer)
-//   n: matrix dimension
-//   kernel: function pointer to computation kernel
+// mpi_matmul_master_worker
+// Input:
+//   A, B, C: rank-0 owns full matrices (row-major n x n); other ranks need B buffer.
+//   n:      matrix dimension.
+//   kernel: computation kernel to apply on local partitions (serial or OMP).
+// Behavior:
+//   Implements master-worker matrix multiplication:
+//     * Rank 0 scatters rows of A via MPI_Scatterv (handles uneven row counts).
+//     * All ranks receive full B via MPI_Bcast.
+//     * Each rank multiplies its rows using the selected kernel.
+//     * Partial C rows are gathered back on rank 0.
+// Constraints:
+//   MPI must be initialized; pointers on rank 0 must be valid buffers of size n*n.
+// Complexity:
+//   Communication O(n^2) per scatter/gather; computation cost depends on kernel.
 void mpi_matmul_master_worker(double *A, double *B, double *C, int n, kernel_func_t kernel);
 
-// Broadcast matrix from master to all processes
+// mpi_broadcast_matrix
+// Convenience wrapper around MPI_Bcast for entire n x n matrices.
 void mpi_broadcast_matrix(double *matrix, int n, int root);
 
-// Scatter matrix rows from master to workers
-// Each process receives a subset of rows
+// mpi_scatter_rows
+// Scatter fixed row blocks from root to all ranks (legacy helper).
 void mpi_scatter_rows(double *matrix, double *local_matrix, int n, int local_rows, int root);
 
-// Gather matrix rows from workers to master
-// Master assembles complete matrix from all processes
+// mpi_gather_rows
+// Gather fixed row blocks back to the root process (legacy helper).
 void mpi_gather_rows(double *local_matrix, double *matrix, int n, int local_rows, int root);
 
 #endif // MPI_WRAPPER_H

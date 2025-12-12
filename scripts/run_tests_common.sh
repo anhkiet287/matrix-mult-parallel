@@ -33,6 +33,20 @@ DEFAULT_OMP_FLAGS="-fopenmp"
 : "${HYBRID_ALGORITHM:=}"
 : "${MPI_ALGORITHMS:=}"
 : "${HYBRID_ALGORITHMS:=}"
+: "${USE_OPENBLAS:=0}"
+: "${OPENBLAS_DIR:=}"
+
+CBLAS_CFLAGS=""
+CBLAS_LIBS=""
+if [ "$USE_OPENBLAS" = "1" ]; then
+    CBLAS_CFLAGS="-DUSE_CBLAS"
+    if [ -n "$OPENBLAS_DIR" ]; then
+        CBLAS_CFLAGS="$CBLAS_CFLAGS -I${OPENBLAS_DIR}/include"
+        CBLAS_LIBS="-L${OPENBLAS_DIR}/lib -lopenblas"
+    else
+        CBLAS_LIBS="-lopenblas"
+    fi
+fi
 
 RED=""; GREEN=""; YELLOW=""; NC=""
 
@@ -75,16 +89,20 @@ build_serial_omp_binaries() {
     ensure_build_dir
     echo "${YELLOW}[build] Serial/OpenMP correctness + performance${NC}"
     pushd "$BUILD_DIR" >/dev/null
-    "$CC" $CFLAGS ${OMP_FLAGS:-} -o correctness_test \
+    "$CC" $CFLAGS ${OMP_FLAGS:-} $CBLAS_CFLAGS -o correctness_test \
         "$PROJECT_ROOT/test/correctness_test.c" \
         "$PROJECT_ROOT/src/kernels.c" \
+        "$PROJECT_ROOT/src/blas_kernel.c" \
+        "$PROJECT_ROOT/src/logging.c" \
         "$PROJECT_ROOT/src/omp_kernels.c" \
-        "$PROJECT_ROOT/src/utility.c" -I"$PROJECT_ROOT/src" -lm
-    "$CC" $CFLAGS ${OMP_FLAGS:-} -o performance_test \
+        "$PROJECT_ROOT/src/utility.c" -I"$PROJECT_ROOT/src" -lm $CBLAS_LIBS
+    "$CC" $CFLAGS ${OMP_FLAGS:-} $CBLAS_CFLAGS -o performance_test \
         "$PROJECT_ROOT/test/performance_test.c" \
         "$PROJECT_ROOT/src/kernels.c" \
+        "$PROJECT_ROOT/src/blas_kernel.c" \
+        "$PROJECT_ROOT/src/logging.c" \
         "$PROJECT_ROOT/src/omp_kernels.c" \
-        "$PROJECT_ROOT/src/utility.c" -I"$PROJECT_ROOT/src" -lm
+        "$PROJECT_ROOT/src/utility.c" -I"$PROJECT_ROOT/src" -lm $CBLAS_LIBS
     popd >/dev/null
 }
 
@@ -99,18 +117,22 @@ build_mpi_binaries() {
 
     echo "${YELLOW}[build] MPI/Hybrid correctness + performance${NC}"
     pushd "$BUILD_DIR" >/dev/null
-    "$MPICC" -O2 ${OMP_FLAGS:-} -o mpi_correctness_test \
+    "$MPICC" -O2 ${OMP_FLAGS:-} $CBLAS_CFLAGS -o mpi_correctness_test \
         "$PROJECT_ROOT/test/mpi_correctness_test.c" \
+        "$PROJECT_ROOT/src/blas_kernel.c" \
+        "$PROJECT_ROOT/src/logging.c" \
         "$PROJECT_ROOT/src/omp_kernels.c" \
         "$PROJECT_ROOT/src/utility.c" \
         "$PROJECT_ROOT/src/kernels.c" \
-        "$PROJECT_ROOT/src/mpi_wrapper.c" -I"$PROJECT_ROOT/src" -lm
-    "$MPICC" -O2 ${OMP_FLAGS:-} -o mpi_performance_test \
+        "$PROJECT_ROOT/src/mpi_wrapper.c" -I"$PROJECT_ROOT/src" -lm $CBLAS_LIBS
+    "$MPICC" -O2 ${OMP_FLAGS:-} $CBLAS_CFLAGS -o mpi_performance_test \
         "$PROJECT_ROOT/test/mpi_performance_test.c" \
+        "$PROJECT_ROOT/src/blas_kernel.c" \
+        "$PROJECT_ROOT/src/logging.c" \
         "$PROJECT_ROOT/src/omp_kernels.c" \
         "$PROJECT_ROOT/src/utility.c" \
         "$PROJECT_ROOT/src/kernels.c" \
-        "$PROJECT_ROOT/src/mpi_wrapper.c" -I"$PROJECT_ROOT/src" -lm
+        "$PROJECT_ROOT/src/mpi_wrapper.c" -I"$PROJECT_ROOT/src" -lm $CBLAS_LIBS
     popd >/dev/null
 }
 
@@ -137,16 +159,18 @@ run_serial_omp_performance() {
 run_mpi_correctness() {
     local algorithm=$1
     local mode=${2:-mpi}
+    local procs=${3:-$MPI_PROCS}
     pushd "$BUILD_DIR" >/dev/null
-    "$MPIRUN" -np "$MPI_PROCS" ./mpi_correctness_test "$algorithm" "$mode"
+    "$MPIRUN" -np "$procs" ./mpi_correctness_test "$algorithm" "$mode"
     popd >/dev/null
 }
 
 run_mpi_performance() {
     local algorithm=$1
     local mode=$2
+    local procs=${3:-$MPI_PROCS}
     pushd "$BUILD_DIR" >/dev/null
-    "$MPIRUN" -np "$MPI_PROCS" ./mpi_performance_test "$algorithm" "$mode"
+    "$MPIRUN" -np "$procs" ./mpi_performance_test "$algorithm" "$mode"
     popd >/dev/null
 }
 

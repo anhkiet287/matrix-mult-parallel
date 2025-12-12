@@ -1,156 +1,238 @@
 # matrix-mult-parallel
-Parallel matrix multiplication using OpenMP, MPI, and hybrid approaches (naive, Strassen, proposed algorithms)
 
-## Assignment fit (what’s covered vs. required)
-- Platforms
-  - ✅ Serial / shared-memory: implemented; runs on laptops.
-  - ✅ MPI / distributed-memory: master–worker decomposition with `MPI_Scatterv/MPI_Gatherv`, irregular row counts handled, supports all kernels (naive, Strassen via padding, proposed via cache-blocked tiles).
-  - ✅ Hybrid MPI+OpenMP: same MPI decomposition while using OpenMP kernels inside each rank (set `OMP_NUM_THREADS` to control threads). Falls back to MPI-only if OpenMP is unavailable.
-- Algorithms
-  - ✅ Naive: implemented (serial + OpenMP entrypoints).
-  - ✅ Strassen: recursive implementation (serial + OpenMP) with automatic padding to next power-of-two; threshold currently fixed at 64.
-  - ✅ Proposed: cache-blocked + transposed-B optimization available in serial + OpenMP versions.
-- Correctness & testing
-  - ✅ Deterministic init (fixed seeds), rank 0 verifies non-baseline runs against serial naive with tolerance.
-  - ✅ Small-matrix printing for n ≤ 10.
-  - ✅ Coverage for all kernels (serial + OpenMP) plus MPI/hybrid correctness/performance harnesses (see test section).
-- Performance & scalability study
-  - ✅ Timing + GFLOPS printed per run.
-  - ⏳ Run the full 100→10 000 sweep across each group member’s shared-memory machine plus the provided distributed cluster (gateway.hpcc.vn), and add comparisons to an external BLAS (OpenBLAS/MKL/CUBLAS) in the final report.
+Parallel matrix multiplication kernels (naive, Strassen, and a cache-blocked “proposed” variant) with four execution approaches: serial, OpenMP, MPI, and hybrid MPI+OpenMP. All experiments share deterministic inputs, unified configuration, and standardized logging so that performance comparisons remain fair across machines and algorithms.
 
-Use this summary in the report to show which mandatory items are already met and which are pending.
+## Overview
 
-## Automated testing & benchmarking
+- **Kernels**
+  - `naive`: classic triple-loop `O(n³)` GEMM.
+  - `strassen`: recursive Strassen with automatic padding and OpenMP task parallelism above a 256 threshold.
+  - `proposed`: cache-blocked multiply with a pre-transposed B tile to boost locality; OpenMP variant parallelizes across tiles.
+- **Approaches**
+  - `serial`: single-threaded kernels.
+  - `openmp`: thread-level parallelism on one rank.
+  - `mpi`: master/worker `MPI_Scatterv` + `MPI_Gatherv` with per-rank kernels.
+  - `hybrid`: same MPI decomposition while each rank uses the OpenMP kernels (set `OMP_NUM_THREADS`).
+- **Fair experiments**
+  - Deterministic seeds (`srand(42)` for A, `srand(123)` for B) and a shared list of matrix sizes from `config/test_settings.sh`.
+  - Each timed experiment runs the same number of repetitions, records the average time, recomputes GFLOPS, and compares against a serial naive reference to report `passed=true/false`.
+  - Structured logs (terminal + CSV/JSON files) capture timestamps, machine IDs, algorithms, approaches, process/thread counts, GFLOPS, and optional notes.
 
-### Script overview
-- `scripts/run_tests_openmp.sh` – builds + runs only the serial/OpenMP correctness and performance binaries.
-- `scripts/run_tests_mpi.sh` – builds + runs the MPI-only correctness/performance suites (serial kernels per rank).
-- `scripts/run_tests_hybrid.sh` – builds + runs the hybrid MPI+OpenMP correctness/performance suites.
-- `scripts/run_tests.sh` – orchestration script that runs the three suites sequentially.
-- `config/test_settings.sh` – shared defaults for matrix sizes, tolerances, algorithm lists, and test kernel selections. All scripts source it automatically, and the C test binaries read the same environment variables (editable in one place or via `export` overrides).
+## Repository layout
 
-### Full regression (serial + OpenMP + MPI/hybrid)
 ```
-cd matrix-mult-parallel
-bash scripts/run_tests.sh
-```
-This script:
-1. Runs `run_tests_openmp.sh` (builds and executes the serial/OpenMP correctness + performance binaries).
-2. Runs `run_tests_mpi.sh` (MPI-only) if `mpicc`/`mpirun` are detected, otherwise prints a skip notice.
-3. Runs `run_tests_hybrid.sh` (MPI+OpenMP) under the same availability checks.
-Control processes via `MPI_PROCS=<p>`. When working on machines that block sockets, run just the OpenMP script to avoid MPI launcher failures, or ensure MPI jobs target a cluster login/head node.
-
-Important environment knobs:
-- `CC`, `CFLAGS`, `OMP_FLAGS` – override compiler + OpenMP flags; script auto-detects `-fopenmp` support.
-- `MPICC`, `MPIRUN`, `MPI_PROCS` – choose MPI toolchain and process count.
-- `NO_COLOR=1` – disable ANSI colors in logs.
-- `OMP_NUM_THREADS` – used by OpenMP kernels/tests you launch afterward.
-- `MPI_ALGORITHMS`, `HYBRID_ALGORITHMS` – space/comma-separated lists of algorithms (naive|strassen|proposed) each suite will run; default is all three. `MPI_ALGORITHM` / `HYBRID_ALGORITHM` remain available for selecting a single algorithm.
-- `CORRECTNESS_KERNELS`, `PERFORMANCE_KERNELS` – limit which kernels the serial/OpenMP binaries exercise (e.g., `CORRECTNESS_KERNELS="matmul_serial strassen_serial"` to test serial only).
-- `TEST_CORRECTNESS_SIZE`, `TEST_PERFORMANCE_SIZES`, `MPI_TEST_SIZE`, `MPI_PERF_SIZES`, `TEST_PERFORMANCE_RUNS`, `MPI_PERF_RUNS`, `TEST_CORRECTNESS_TOLERANCE` – matrix sizes/tolerances used by the C test binaries. Edit once in `config/test_settings.sh` or export variables in your shell; all scripts/tests consume the same values.
-- `RUN_TESTS_LOG_DIR=<path>` – when set, `scripts/run_tests.sh` tees all output (across sub-suites) into `path/run_tests_<timestamp>.log` while still printing to the console, making it easy to archive experiment logs.
-
-### Targeted/manual runs
-- Serial/OpenMP regression only (after one `run_tests` build): `./build/correctness_test`
-- Serial/OpenMP performance sweep (sizes 128→2048, 5 runs each): `./build/performance_test`
-- MPI correctness for a specific algorithm/mode: `mpirun -np 4 ./build/mpi_correctness_test naive mpi` or `mpirun -np 4 ./build/mpi_correctness_test proposed hybrid`
-- MPI vs hybrid benchmark: `MPI_PERF_SIZES=256,512,1024 MPI_PERF_RUNS=3 mpirun -np 4 ./build/mpi_performance_test proposed hybrid`
-- Serial-only smoke (skip OpenMP kernels): `CORRECTNESS_KERNELS="matmul_serial strassen_serial proposed_serial" PERFORMANCE_KERNELS="matmul_serial strassen_serial proposed_serial" bash scripts/run_tests_openmp.sh`
-
-These binaries honor:
-- `MPI_PERF_SIZES`, `MPI_PERF_RUNS` for MPI benchmarking grids.
-- `OMP_NUM_THREADS` for OpenMP kernels (set before running hybrid tests).
-
-### Application entry point
-```
-# Serial / OpenMP
-./matmul 512 openmp proposed
-
-# MPI / hybrid
-OMP_NUM_THREADS=4 mpirun -np 4 ./matmul 1024 hybrid naive
+matrix-mult-parallel/
+├── src/                # main CLI, kernels, MPI wrapper, utilities, logging helpers
+├── test/               # correctness & performance suites (serial/OpenMP + MPI/hybrid)
+├── scripts/            # regression runners + export_results_md.py helper
+├── config/test_settings.sh  # single source of truth for matrix sizes, repetitions, tolerances
+├── matmul              # built CLI (see “Building”)
+└── README.md
 ```
 
-## Recent benchmark snapshot (Nov 2023 configuration)
-`config/test_settings.sh` currently specifies:
-- `TEST_CORRECTNESS_SIZE=256`
-- `TEST_PERFORMANCE_SIZES=128,256,512,1024,2048` with `TEST_PERFORMANCE_RUNS=5`
-- `MPI_PERF_SIZES=256,512,1024,2048,4096` with `MPI_PERF_RUNS=1`
+## Building
 
-Selected highlights from the latest `bash scripts/run_tests.sh` run (4 MPI ranks, default `OMP_NUM_THREADS`):
+Dependencies:
+- C compiler with OpenMP support (GCC/Clang)
+- MPI toolchain (`mpicc`, `mpirun`) for distributed and hybrid runs
+- Python 3 (optional, for `scripts/export_results_md.py`)
 
-| Mode | Algorithm | Size | Time (s) | GFLOPS | Notes |
-|------|-----------|------|----------|--------|-------|
-| OpenMP | `strassen_omp` | 2048 | 0.5622 | 30.56 | Fastest shared-memory kernel today. |
-| OpenMP | `proposed_omp` | 2048 | 0.6720 | 25.56 | Cache-blocked kernel, close to Strassen for large n. |
-| MPI | `proposed_serial` (per-rank) | 2048 | 0.9721 | 17.67 | Benefit of using the cache-blocked kernel inside each partition; still root-bound. |
-| MPI | `naive` | 2048 | 9.9808 | 1.72 | Highlights the cost of scatter/gather when using the plain triple loop. |
-| Hybrid | `proposed_omp` | 2048 | 0.7082 | 24.26 | Threads + MPI deliver the highest multi-process throughput today. |
-| Hybrid | `naive` | 2048 | 6.6690 | 2.58 | Naive kernel still sees thread-level gains but is limited by MPI comms. |
+Example builds:
 
-Update these numbers (or link to CSV logs) when you reconfigure `test_settings.sh` or run on different machines.
-
-## Status checklist
-- [x] Serial naive, Strassen (auto padding), and cache-blocked “proposed” kernels implemented.
-- [x] OpenMP counterparts for all kernels (task-based Strassen, tiled proposed, naive baseline).
-- [x] MPI master–worker wrapper with load-balanced `MPI_Scatterv/MPI_Gatherv` and per-partition kernel dispatch (proposed uses cache-blocked multiply; Strassen pads to square subproblems for correctness).
-- [x] Automated correctness + performance harnesses, including MPI and hybrid variants.
-- [ ] Large-scale performance/scalability study (100→10 000) across all required platforms (each group member’s shared-memory machine + the provided cluster) with logged results.
-- [ ] External baseline comparison (e.g., OpenBLAS/MKL/CUBLAS) documented in the report.
-
-## Build & run (minimal, no OpenMP required)
-If OpenMP toolchain is not available, you can still build and run MPI/hybrid (hybrid will behave like MPI-only):
 ```bash
-mpicc -O2 src/main.c src/mpi_wrapper.c src/kernels.c src/omp_kernels.c src/utility.c -o matmul
+# Serial + OpenMP only
+gcc -O3 -fopenmp -o matmul \
+  src/main.c src/kernels.c src/omp_kernels.c src/mpi_wrapper.c src/utility.c
 
-./matmul 64 serial naive
-mpirun -np 2 ./matmul 64 mpi naive
-mpirun -np 2 ./matmul 64 hybrid naive   # runs but without thread-level parallelism
+# Full hybrid build with MPI (recommended)
+mpicc -O3 -fopenmp -lm -o matmul \
+  src/main.c src/kernels.c src/omp_kernels.c src/mpi_wrapper.c src/utility.c
 ```
 
-## Build with OpenMP (for real hybrid/OpenMP speedup)
-- macOS (Homebrew): install GCC/libomp (`brew install gcc libomp openmpi`), then:
+If your compiler installs OpenMP headers/libraries elsewhere (e.g., Homebrew’s `libomp` on macOS), add the appropriate `-I`/`-L`/`-lomp` flags. Scripts default to `gcc`/`mpicc` but honor `CC`, `CFLAGS`, `MPICC`, `MPIRUN`, and `OMP_FLAGS` overrides.
+
+## Running `matmul`
+
+```
+./matmul <n> <approach> <algorithm>
+
+# Examples
+./matmul 256 serial naive
+OMP_NUM_THREADS=8 ./matmul 1024 openmp proposed
+mpirun -np 4 ./matmul 1024 mpi strassen
+OMP_NUM_THREADS=4 mpirun -np 4 ./matmul 2048 hybrid proposed
+```
+
+The program always boots MPI so the same binary can execute any approach. Rank 0 allocates matrices, seeds the random generator deterministically, and prints configuration details. After the run, rank 0 recomputes a serial naive reference (unless the run already used serial naive) and reports pass/fail with a tolerance of `1e-6`.
+
+## Correctness checks
+
+- All kernels (serial, OpenMP, MPI, hybrid) are exercised by dedicated test binaries in `test/`.
+- Deterministic matrix initialization ensures identical inputs for every algorithm/approach pair.
+- Serial/OpenMP and MPI/hybrid performance suites automatically compute a matmul_serial baseline per matrix size and flag mismatches via `matrix_compare`.
+
+## Automated test suites
+
+Scripts live in `scripts/` and all share `config/test_settings.sh`, so you can edit matrix sizes, repetitions, tolerances, and algorithm lists in one place. Key scripts:
+
+| Script | What it does |
+| --- | --- |
+| `scripts/run_tests_openmp.sh` | Builds + runs `build/correctness_test` and `build/performance_test`. Covers serial and OpenMP kernels only. |
+| `scripts/run_tests_mpi.sh` | Builds + runs `build/mpi_correctness_test` and `build/mpi_performance_test` using MPI kernels per rank. Skips automatically if `mpicc`/`mpirun` are missing. |
+| `scripts/run_tests_hybrid.sh` | Same as MPI script but launches the hybrid (OpenMP-inside) variations. |
+| `scripts/run_tests.sh` | Orchestrates openmp + mpi + hybrid suites sequentially; set `RUN_TESTS_LOG_DIR=/path` to tee combined output into a timestamped log. |
+
+Common environment knobs (all loaded from `config/test_settings.sh` unless you override them):
+
+- `TEST_CORRECTNESS_SIZE`, `MPI_TEST_SIZE` – matrices for correctness smoke tests.
+- `TEST_PERFORMANCE_SIZES`, `MPI_PERF_SIZES` – comma/space separated sizes for shared-memory vs distributed benchmarks. MPI falls back to `TEST_PERFORMANCE_SIZES` when its list is unset to keep experiments aligned.
+- `TEST_PERFORMANCE_RUNS` – number of timed repetitions per configuration (used everywhere; default 5).
+- `MPI_PERF_RUNS` – legacy MPI-specific repetition count (falls back to `TEST_PERFORMANCE_RUNS` when unset).
+- `WARMUP_RUNS` – warm-up iterations to discard before timing (default 1).
+- `CORRECTNESS_KERNELS`, `PERFORMANCE_KERNELS`, `MPI_ALGORITHMS`, `HYBRID_ALGORITHMS` – restrict which kernels/algorithms are exercised.
+- `OMP_THREAD_LIST` – thread counts to sweep for OpenMP tests (e.g., `1,2,4,8`).
+- `MPI_PROC_LIST` – MPI ranks to sweep (e.g., `1,2,4,8`) when running `scripts/run_tests_mpi.sh`.
+- `HYBRID_GRID` – comma-separated list of `<procs>x<threads>` pairs (e.g., `2x8,4x4,4x6`) for hybrid sweeps.
+- `MPI_PROCS` / `OMP_NUM_THREADS` – defaults when no sweep list is provided.
+- `USE_OPENBLAS=1`, `OPENBLAS_DIR=/path` – opt-in BLAS baseline support (adds `-DUSE_CBLAS` and links OpenBLAS when building).
+- `BLAS_ALLOW_THREADS=1` – let vendor BLAS manage its own threading (default forces BLAS baselines to one thread).
+
+Manual entry points if you want to run binaries directly after one build:
+
 ```bash
-mpicc -O2 -fopenmp \
-  src/main.c src/mpi_wrapper.c src/kernels.c src/omp_kernels.c src/utility.c \
-  -I/opt/homebrew/opt/libomp/include -L/opt/homebrew/opt/libomp/lib -lomp \
-  -o matmul
+./build/correctness_test
+./build/performance_test
+mpirun -np 4 ./build/mpi_correctness_test proposed hybrid
+MPI_PERF_SIZES=512,1024 mpirun -np 4 ./build/mpi_performance_test proposed mpi
 ```
-- Linux (Ubuntu): `sudo apt install build-essential libomp-dev openmpi-bin libopenmpi-dev`, then:
+
+## Experiment logging & metrics
+
+Set `RESULTS_DIR=<path>` to enable file logging. Each test binary writes to a deterministic file (or to `RESULTS_DIR/<RESULTS_FILE_BASENAME>.{csv,json}` when `RESULTS_FILE_BASENAME` is set):
+
+- `openmp_results.*` for `performance_test`
+- `mpi_results.*` for `mpi_performance_test` (MPI mode)
+- `hybrid_results.*` for hybrid mode
+
+Format defaults to CSV; override with `RESULTS_FORMAT=json`. Each line/record follows the unified schema:
+
+```
+timestamp,machine_id,algo,approach,n,nprocs,nthreads,repetitions,
+time_sec,time_min,time_max,time_mean,gflops_gemm_eq,passed,speedup_vs_naive,note
+```
+
+Key metrics:
+- `time_sec` is the median of `TEST_PERFORMANCE_RUNS` iterations; `time_min/time_max/time_mean` capture variability.
+- `gflops_gemm_eq` always uses the GEMM-equivalent `2n^3 / time` formula, even for Strassen (treat it as a relative throughput metric).
+- `speedup_vs_naive` compares each configuration against the serial naive baseline for the same `n` (when available).
+
+Environment helpers:
+- `MACHINE_ID` – free-form string describing the host (default `unknown`).
+- `RESULTS_NOTE` – optional note appended to each record (e.g., `hpcc node01` or `warmup excluded`).
+- `RESULTS_FILE_BASENAME` – override the default filename when aggregating multiple suites into one log.
+
+Use `python3 scripts/export_results_md.py -i results/openmp_results.csv` to turn CSV output into Markdown tables for reports.
+
+### Scalability sweeps
+
+The performance scripts understand several sweep lists:
+
+- **OpenMP threads:** `OMP_THREAD_LIST="1,2,4,8" bash scripts/run_tests_openmp.sh`
+- **MPI ranks:** `MPI_PROC_LIST="1,2,4,8" bash scripts/run_tests_mpi.sh`
+- **Hybrid grids:** `HYBRID_GRID="2x4,4x4,4x6" bash scripts/run_tests_hybrid.sh`
+
+Each configuration logs a single row with median/min/max/mean time and GEMM-equivalent GFLOPS, making it trivial to plot scaling curves.
+MPI sweeps on laptops/desktops can be noisy; for graded scalability studies we recommend running the same commands on the provided cluster or via `scripts/hpcc_job_slurm.sh`.
+
+### Cluster automation
+
+On Slurm-based clusters run:
+
 ```bash
-mpicc -O3 -fopenmp -o matmul src/main.c src/kernels.c src/omp_kernels.c src/mpi_wrapper.c src/utility.c -lm
+bash scripts/hpcc_job_slurm.sh
 ```
-- Cluster (gateway.hpcc.vn): modules may already provide OpenMPI/GCC. Typical: `module load gcc openmpi` then the Linux command above.
 
-## Run examples
+The helper script sets `RESULTS_DIR`, `MACHINE_ID`, `RESULTS_NOTE`, submits an `sbatch` job, and runs both MPI (`MPI_PROC_LIST`) and hybrid (`HYBRID_GRID`) sweeps via `srun`. When `sbatch` is unavailable the script prints manual instructions instead.
+
+### Optional BLAS baseline
+
+To include a single-node BLAS DGEMM reference (algo=`blas`, approach=`serial`):
+
+1. Install OpenBLAS (or another CBLAS-compatible library).
+2. Build/run with BLAS enabled, for example:
+   ```bash
+   USE_OPENBLAS=1 OPENBLAS_DIR=/opt/openblas \
+   RESULTS_DIR=results \
+   PERFORMANCE_KERNELS="matmul_serial matmul_blas" \
+   OMP_THREAD_LIST="1,2,4" \
+   bash scripts/run_tests_openmp.sh
+   ```
+3. By default the benchmark forces `OPENBLAS_NUM_THREADS=1` (and likewise for MKL/BLIS) so the baseline matches the single-threaded naive reference. Set `BLAS_ALLOW_THREADS=1` to let BLAS manage its own threading.
+4. Logs will contain rows such as `algo=blas`, `approach=serial`, `nthreads=1`, and the `note` field automatically appends `blas=<backend>` (e.g., `blas=openblas`). Convert to Markdown for the report via:
+   ```bash
+   python3 scripts/export_results_md.py -i results/openmp_results.csv -o results/openmp_results.md
+   ```
+
+When BLAS support is disabled (default build), the benchmark prints a single warning and skips the `blas` configuration gracefully.
+
+## Reproducing experiments
+
+1. **Configure the machine**  
+   Install a compiler with OpenMP, MPI runtime, and Python 3. Set `MACHINE_ID`, `OMP_NUM_THREADS`, and `MPI_PROCS` as needed.
+2. **Clone & build**  
+   `git clone ... && cd matrix-mult-parallel && bash scripts/run_tests_openmp.sh` (or the full `run_tests.sh` if MPI networking is available).
+3. **Set experiment knobs**  
+   Edit `config/test_settings.sh` or export env vars (`TEST_PERFORMANCE_SIZES`, `MPI_PERF_SIZES`, `TEST_PERFORMANCE_RUNS`, `WARMUP_RUNS`, `OMP_THREAD_LIST`, `MPI_PROC_LIST`, `HYBRID_GRID`, `RESULTS_DIR`, `RESULTS_FILE_BASENAME`, etc.).
+4. **Run suites**  
+   `RESULTS_DIR=results RUN_TESTS_LOG_DIR=logs bash scripts/run_tests.sh`
+5. **Inspect results**  
+   - Terminal summaries show algo/approach dimensions, med/min/max/mean runtimes, GEMM-equivalent GFLOPS, and pass/fail.
+   - CSV/JSON logs live under `results/`.
+   - Optional Markdown export via `scripts/export_results_md.py`.
+   - Attach logs (and scripts/test_settings snapshot) to your report for reproducibility.
+
+### Full sweep recipe (copy & paste)
+
 ```bash
-# Serial baseline
-./matmul 100 serial naive
+cd /home/kiet/matrix-mult-parallel
+mkdir -p results logs
 
-# OpenMP on one rank (needs OpenMP build)
-OMP_NUM_THREADS=4 ./matmul 500 openmp naive
+export MACHINE_ID=$(hostname)
+export RESULTS_DIR=$PWD/results
+export RESULTS_NOTE="report sweep"
+export TEST_PERFORMANCE_RUNS=7
+export WARMUP_RUNS=2
 
-# MPI
-mpirun -np 4 ./matmul 1000 mpi naive
+# 1) Shared-memory sweep + BLAS baseline
+USE_OPENBLAS=1 OPENBLAS_DIR=/opt/openblas \
+PERFORMANCE_KERNELS="matmul_serial matmul_blas matmul_omp strassen_omp proposed_omp" \
+OMP_THREAD_LIST="1,2,4,8" \
+RUN_TESTS_LOG_DIR=logs \
+bash scripts/run_tests_openmp.sh
 
-# Hybrid MPI + OpenMP (needs OpenMP build)
-OMP_NUM_THREADS=4 mpirun -np 4 ./matmul 1000 hybrid naive
+# 2) MPI ranks (add MPIRUN_FLAGS=--oversubscribe if > cores)
+MPI_PROC_LIST="1,2,4,8" \
+RUN_TESTS_LOG_DIR=logs \
+bash scripts/run_tests_mpi.sh
+
+# 3) Hybrid grids (processes x threads, pick combos that fit your machine)
+HYBRID_GRID="2x4,4x2,4x1" \
+RUN_TESTS_LOG_DIR=logs \
+bash scripts/run_tests_hybrid.sh
+
+# Export CSV -> Markdown for reporting
+python3 scripts/export_results_md.py -i results/openmp_results.csv -o results/openmp_results.md
+python3 scripts/export_results_md.py -i results/mpi_results.csv -o results/mpi_results.md
+python3 scripts/export_results_md.py -i results/hybrid_results.csv -o results/hybrid_results.md
 ```
 
-## Optimization opportunities / known gaps
-- `src/mpi_wrapper.c`: Strassen partitions are padded to square matrices locally so correctness holds, but this introduces extra memory copies and diminishes the algorithm’s advantage. A 2D block distribution that keeps subtiles square (or recursively applies Strassen across ranks) would reduce padding overhead and let Strassen scale better.
-- `src/omp_kernels.c` & `src/kernels.c`: Strassen implementation copies and allocates fresh submatrices at every recursion level, driving memory usage to O(n² log n) and adding a lot of malloc/free pressure. Reusing buffers, iterating in-place, or switching to an iterative schedule at larger thresholds (≥256) would improve performance.
-- `test/correctness_test.c` / MPI tests: currently run a single matrix size per invocation (configured via `config/test_settings.sh`). Consider scripting sweeps across multiple sizes (including non-powers-of-two) and logging pass/fail plus checksum deltas to CSV for the report.
-- `src/proposed_*`: `BLOCK_SIZE` is fixed at 64; expose it as a parameter or auto-tune per architecture (e.g., environment variable or config entry) to meet the “proposed algorithm” performance expectations on different caches.
-- MPI scaling: the current master–worker design performs all scatter/gather on rank 0, so communication becomes the bottleneck and MPI throughput never surpasses OpenMP on a single machine. Implement a 2‑D block decomposition (SUMMA/Cannon) with non-blocking collectives to overlap communication/computation, and run on more ranks/nodes to showcase distributed-memory gains.
+Tùy chỉnh `OPENBLAS_DIR`, `MPI_PROC_LIST`, `HYBRID_GRID` theo phần cứng từng người. Sau khi chạy xong sẽ có dữ liệu cho cả shared-memory, MPI và hybrid cùng với bảng Markdown tiện đưa vào báo cáo.
 
-## Notes
-- Matrices are initialized with fixed seeds for reproducibility.
-- Verification runs a serial naive reference on rank 0 (for non-baseline modes).
-- When `np=1`, the chosen kernel runs directly; when `np>1`, partial blocks use a simple triple loop (OMP-parallel if available).
+## Status & next steps
 
-## Remaining work to reach final deliverable
-- Redesign distributed tiling (or add a 2D block-cyclic layout) so Strassen can operate on square subproblems without local padding, reducing memory copies and improving scaling.
-- Add tunable knobs (or auto-tuning scripts) for Strassen thresholds and the proposed-algorithm block sizes, and document the tuning procedure in the report.
-- Extend correctness/performance sweeps to span the 100→10 000 size range across all available machines, exporting CSV/plots for the final report and comparing the fastest configurations against a vendor BLAS (OpenBLAS/MKL/CUBLAS).
-- Provide automation for cluster jobs (e.g., SLURM scripts) that iterate over matrix sizes, MPI ranks, and `OMP_NUM_THREADS`, storing results per run for reproducibility.
-- Run the testing matrix on each required platform: (1) every group member’s laptop/desktop (OpenMP-only runs via `scripts/run_tests_openmp.sh`), (2) the provided distributed cluster via `gateway.hpcc.vn` (MPI + hybrid runs via `RUN_TESTS_LOG_DIR=... bash scripts/run_tests.sh` after `module load gcc openmpi`), and (3) a combined MPI+OpenMP configuration (hybrid mode) to satisfy the “marriage” requirement.
+- ✅ All required kernels (naive, Strassen, proposed) implemented and available in serial, OpenMP, MPI, and hybrid forms.
+- ✅ Deterministic seeding, shared configuration, and unified logging across serial/OpenMP/MPI experiments.
+- ✅ Correctness harnesses compare every run against the serial naive reference with tolerance `1e-6`.
+- 🔄 Pending work: large-scale (100→10 000) sweeps on every required platform, BLAS baselines, and more advanced MPI tilings to reduce root bottlenecks.
+
+Use the TODOs in `docs/design_notes.md` and the “Optimization opportunities” section of the prior README if you plan further improvements (2‑D decompositions, auto-tuning block sizes, BLAS comparisons, etc.).

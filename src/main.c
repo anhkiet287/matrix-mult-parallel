@@ -18,7 +18,7 @@ void print_usage(const char *prog_name) {
     printf("\nArguments:\n");
     printf("  size       : Matrix size (N x N)\n");
     printf("  approach   : serial | openmp | mpi | hybrid\n");
-    printf("  algorithm  : naive | strassen | proposed\n");
+    printf("  algorithm  : naive | strassen | proposed | blas\n");
     printf("\nExamples:\n");
     printf("  %s 100 serial naive\n", prog_name);
     printf("  %s 500 openmp strassen\n", prog_name);
@@ -111,6 +111,15 @@ int main(int argc, char **argv) {
             kernel = strassen_serial;
         } else if (strcmp(algorithm, "proposed") == 0) {
             kernel = proposed_serial;
+        } else if (strcmp(algorithm, "blas") == 0 && strcmp(approach, "serial") == 0) {
+            if (!matmul_blas_available()) {
+                if (rank == 0) {
+                    fprintf(stderr, "Error: BLAS baseline unavailable (rebuild with USE_OPENBLAS=1)\n");
+                }
+                mpi_finalize();
+                return 1;
+            }
+            kernel = matmul_blas;
         } else {
             if (rank == 0) {
                 fprintf(stderr, "Error: Unknown algorithm '%s'\n", algorithm);
@@ -126,6 +135,12 @@ int main(int argc, char **argv) {
             kernel = strassen_omp;
         } else if (strcmp(algorithm, "proposed") == 0) {
             kernel = proposed_omp;
+        } else if (strcmp(algorithm, "blas") == 0) {
+            if (rank == 0) {
+                fprintf(stderr, "Error: BLAS baseline is available only in serial mode\n");
+            }
+            mpi_finalize();
+            return 1;
         } else {
             if (rank == 0) {
                 fprintf(stderr, "Error: Unknown algorithm '%s'\n", algorithm);

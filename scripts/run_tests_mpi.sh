@@ -26,22 +26,32 @@ fi
 build_mpi_binaries
 
 mpi_algorithms=$(get_algorithm_list "${MPI_ALGORITHMS}" "${MPI_ALGORITHM}" "naive strassen proposed")
+mpi_proc_list=$(normalize_algorithm_list "${MPI_PROC_LIST:-}")
+if [ -z "$mpi_proc_list" ]; then
+    mpi_proc_list="$MPI_PROCS"
+fi
 
 echo ""
 echo "${YELLOW}[1/2] Running MPI correctness sweep...${NC}"
-for algorithm in $mpi_algorithms; do
-    echo "  - ${algorithm}"
-    run_mpi_correctness "$algorithm" mpi
+for procs in $mpi_proc_list; do
+    echo "  + MPI ranks = ${procs}"
+    for algorithm in $mpi_algorithms; do
+        echo "    - ${algorithm}"
+        run_mpi_correctness "$algorithm" mpi "$procs"
+    done
 done
-echo "${GREEN}✓ MPI correctness passed (${mpi_algorithms})${NC}"
+echo "${GREEN}✓ MPI correctness passed (${mpi_algorithms}) [ranks: ${mpi_proc_list}]${NC}"
 
 echo ""
 echo "${YELLOW}[2/2] Running MPI performance sweep...${NC}"
-for algorithm in $mpi_algorithms; do
-    echo "  - ${algorithm}"
-    run_mpi_performance "$algorithm" mpi
+for procs in $mpi_proc_list; do
+    echo "  + MPI ranks = ${procs}"
+    for algorithm in $mpi_algorithms; do
+        echo "    - ${algorithm}"
+        run_mpi_performance "$algorithm" mpi "$procs"
+    done
 done
-echo "${GREEN}✓ MPI benchmarks complete (${mpi_algorithms})${NC}"
+echo "${GREEN}✓ MPI benchmarks complete (${mpi_algorithms}) [ranks: ${mpi_proc_list}]${NC}"
 
 echo ""
 echo "=============================================="

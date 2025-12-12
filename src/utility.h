@@ -7,47 +7,59 @@
 
 #include <stdlib.h>
 
-// Matrix memory allocation
-// Allocates n*n matrix in row-major order
-// Returns pointer to allocated matrix, or NULL on failure
+// matrix_allocate
+// Input: n (matrix dimension > 0).
+// Output: pointer to a newly allocated n*n double buffer (row-major) or NULL on failure.
 double* matrix_allocate(int n);
 
-// Matrix memory deallocation
+// matrix_free
+// Input: pointer previously returned by matrix_allocate (may be NULL).
+// Behavior: releases heap memory.
 void matrix_free(double *matrix);
 
-// Initialize matrix with random values in range [0, 1]
+// matrix_random_init
+// Input: matrix pointer, dimension n.
+// Behavior: fills the n*n matrix with rand()/RAND_MAX values using the current RNG seed.
 void matrix_random_init(double *matrix, int n);
 
-// Initialize matrix with zeros
+// matrix_zero_init
+// Input: matrix pointer, dimension n.
+// Behavior: sets all elements to 0.0.
 void matrix_zero_init(double *matrix, int n);
 
-// Initialize identity matrix
+// matrix_identity_init
+// Behavior: writes the n x n identity matrix (1.0 on the diagonal, 0 elsewhere).
 void matrix_identity_init(double *matrix, int n);
 
-// Compare two matrices for equality within tolerance
-// Returns 1 if equal, 0 otherwise
-// tolerance: acceptable absolute difference (e.g., 1e-6)
+// matrix_compare
+// Input: matrices A, B, dimension n, absolute tolerance.
+// Behavior: returns 1 if every entry differs by <= tolerance, otherwise 0.
+// Complexity: O(n^2).
 int matrix_compare(double *A, double *B, int n, double tolerance);
 
-// Print matrix to stdout (for debugging)
-// max_size: maximum rows/cols to print (for large matrices)
+// matrix_print
+// Input: matrix pointer, dimensions n, max_size cap for printing.
+// Behavior: prints up to max_size x max_size entries for debugging.
 void matrix_print(double *matrix, int n, int max_size);
 
-// Get current wall-clock time in seconds
-// For performance benchmarking
+// get_wtime
+// Output: double precision wall-clock timestamp in seconds (monotonic best-effort).
 double get_wtime();
 
-// Calculate matrix checksum for verification
-// Sum of all elements (simple hash)
+// matrix_checksum
+// Behavior: returns the sum of all n*n elements (useful for quick fingerprints).
 double matrix_checksum(double *matrix, int n);
 
-// Matrix addition: C = A + B (element-wise)
+// matrix_add
+// Behavior: performs elementwise C = A + B over n x n matrices.
 void matrix_add(double *A, double *B, double *C, int n);
 
-// Matrix subtraction: C = A - B (element-wise)
+// matrix_sub
+// Behavior: performs elementwise C = A - B over n x n matrices.
 void matrix_sub(double *A, double *B, double *C, int n);
 
-// Matrix transpose: dst = src^T
+// matrix_transpose
+// Behavior: writes dst[j*n + i] = src[i*n + j] for an n x n matrix.
 void matrix_transpose(double *src, double *dst, int n);
 
 #endif // UTILITY_H
