@@ -80,6 +80,7 @@ Scripts live in `scripts/` and all share `config/test_settings.sh`, so you can e
 | `scripts/run_tests_openmp.sh` | Builds + runs `build/correctness_test` and `build/performance_test`. Covers serial and OpenMP kernels only. |
 | `scripts/run_tests_mpi.sh` | Builds + runs `build/mpi_correctness_test` and `build/mpi_performance_test` using MPI kernels per rank. Skips automatically if `mpicc`/`mpirun` are missing. |
 | `scripts/run_tests_hybrid.sh` | Same as MPI script but launches the hybrid (OpenMP-inside) variations. |
+| `scripts/run_three_approach_size.sh` | Convenience wrapper that runs OpenMP, MPI, and hybrid benchmarks for one matrix size so you can compare the approaches directly. |
 | `scripts/run_tests.sh` | Orchestrates openmp + mpi + hybrid suites sequentially; set `RUN_TESTS_LOG_DIR=/path` to tee combined output into a timestamped log. |
 
 Common environment knobs (all loaded from `config/test_settings.sh` unless you override them):
@@ -92,10 +93,12 @@ Common environment knobs (all loaded from `config/test_settings.sh` unless you o
 - `CORRECTNESS_KERNELS`, `PERFORMANCE_KERNELS`, `MPI_ALGORITHMS`, `HYBRID_ALGORITHMS` – restrict which kernels/algorithms are exercised.
 - `OMP_THREAD_LIST` – thread counts to sweep for OpenMP tests (e.g., `1,2,4,8`).
 - `MPI_PROC_LIST` – MPI ranks to sweep (e.g., `1,2,4,8`) when running `scripts/run_tests_mpi.sh`.
+- `MPIRUN_FLAGS` – extra launcher flags appended before `-np` (defaults to `--bind-to core`; override with `--bind-to none --oversubscribe` on laptops or custom pinning rules).
 - `HYBRID_GRID` – comma-separated list of `<procs>x<threads>` pairs (e.g., `2x8,4x4,4x6`) for hybrid sweeps.
 - `MPI_PROCS` / `OMP_NUM_THREADS` – defaults when no sweep list is provided.
 - `USE_OPENBLAS=1`, `OPENBLAS_DIR=/path` – opt-in BLAS baseline support (adds `-DUSE_CBLAS` and links OpenBLAS when building).
 - `BLAS_ALLOW_THREADS=1` – let vendor BLAS manage its own threading (default forces BLAS baselines to one thread).
+- `ENABLE_STRESS_10K=1` – append `n=10000` to both shared-memory and MPI performance sweeps (leave unset/0 for day-to-day runs).
 
 Manual entry points if you want to run binaries directly after one build:
 
@@ -143,6 +146,56 @@ The performance scripts understand several sweep lists:
 
 Each configuration logs a single row with median/min/max/mean time and GEMM-equivalent GFLOPS, making it trivial to plot scaling curves.
 MPI sweeps on laptops/desktops can be noisy; for graded scalability studies we recommend running the same commands on the provided cluster or via `scripts/hpcc_job_slurm.sh`.
+
+### Single-size comparison across approaches
+
+To exercise all three approaches (OpenMP, MPI, and hybrid) on the same matrix size, use:
+
+```bash
+cd ~/matrix-mult-parallel   # or cd /path/to/your/clone
+mkdir -p results logs
+export MACHINE_ID=$(hostname)
+export RESULTS_DIR=$PWD/results
+export MPIRUN_FLAGS="--bind-to core"
+bash scripts/run_three_approach_size.sh 2048 logs/size2048
+```
+
+The script pins `TEST_PERFORMANCE_SIZES`/`MPI_PERF_SIZES` to the value you pass (2048 in the example) and then calls the standard OpenMP, MPI, and hybrid test suites. Customize `OMP_THREAD_LIST`, `MPI_PROC_LIST`, and `HYBRID_GRID` beforehand to match your hardware. Results land in `results/openmp_results.csv`, `results/mpi_results.csv`, and `results/hybrid_results.csv`, all filtered to the requested matrix size for easy comparison.
+
+### Best-config template (side-by-side comparison)
+
+When you want one “best” configuration per approach—for example, on an 8-thread workstation—run:
+
+```bash
+cd /path/to/your/matrix-mult-parallel
+mkdir -p results logs
+
+export MACHINE_ID=$(hostname)         # customize per platform
+export RESULTS_DIR=$PWD/results
+export RESULTS_NOTE="best-config sweep"
+export MPIRUN_FLAGS="--bind-to core"  # override if you need different pinning
+
+# OpenMP: pick a single thread count
+TEST_PERFORMANCE_SIZES=2048 OMP_THREAD_LIST="8" \
+RUN_TESTS_LOG_DIR=logs bash scripts/run_tests_openmp.sh
+
+# MPI: pick the rank count that fits your cores
+MPI_PERF_SIZES=2048 MPI_PROC_LIST="8" \
+RUN_TESTS_LOG_DIR=logs bash scripts/run_tests_mpi.sh
+
+# Hybrid: choose a grid (procs x threads) that multiplies to your cores
+MPI_PERF_SIZES=2048 HYBRID_GRID="4x2" \
+RUN_TESTS_LOG_DIR=logs bash scripts/run_tests_hybrid.sh
+```
+
+Tune these environment variables for other hardware:
+- `TEST_PERFORMANCE_SIZES` / `MPI_PERF_SIZES`: matrix sizes (comma-separated) to benchmark.
+- `OMP_THREAD_LIST`: OpenMP thread counts (set to one value to test only your “best” option).
+- `MPI_PROC_LIST`: MPI ranks per run; avoid exceeding the physical core count unless you add `--oversubscribe`.
+- `HYBRID_GRID`: comma-separated list of `procsxthreads` pairs (e.g., `2x4,4x2`).
+- `MPIRUN_FLAGS`: launcher flags for pinning or oversubscription.
+
+This template yields one row per approach in the CSV logs so you can compare their speedups side by side without re-running full sweeps.
 
 ### Cluster automation
 
@@ -194,7 +247,7 @@ When BLAS support is disabled (default build), the benchmark prints a single war
 ### Full sweep recipe (copy & paste)
 
 ```bash
-cd /home/kiet/matrix-mult-parallel
+cd ~/matrix-mult-parallel   # or cd /path/to/your/clone
 mkdir -p results logs
 
 export MACHINE_ID=$(hostname)
@@ -210,7 +263,7 @@ OMP_THREAD_LIST="1,2,4,8" \
 RUN_TESTS_LOG_DIR=logs \
 bash scripts/run_tests_openmp.sh
 
-# 2) MPI ranks (add MPIRUN_FLAGS=--oversubscribe if > cores)
+# 2) MPI ranks (override MPIRUN_FLAGS if you need different pinning)
 MPI_PROC_LIST="1,2,4,8" \
 RUN_TESTS_LOG_DIR=logs \
 bash scripts/run_tests_mpi.sh
@@ -233,6 +286,7 @@ Tùy chỉnh `OPENBLAS_DIR`, `MPI_PROC_LIST`, `HYBRID_GRID` theo phần cứng t
 - ✅ All required kernels (naive, Strassen, proposed) implemented and available in serial, OpenMP, MPI, and hybrid forms.
 - ✅ Deterministic seeding, shared configuration, and unified logging across serial/OpenMP/MPI experiments.
 - ✅ Correctness harnesses compare every run against the serial naive reference with tolerance `1e-6`.
-- 🔄 Pending work: large-scale (100→10 000) sweeps on every required platform, BLAS baselines, and more advanced MPI tilings to reduce root bottlenecks.
+- ✅ Optional BLAS baseline (OpenBLAS/CBLAS) integrated into the shared-memory suite (`USE_OPENBLAS=1` + `algo=blas`).
+- 🔄 Pending work: large-scale (100→10 000) sweeps on every required platform and more advanced MPI tilings to reduce root bottlenecks.
 
 Use the TODOs in `docs/design_notes.md` and the “Optimization opportunities” section of the prior README if you plan further improvements (2‑D decompositions, auto-tuning block sizes, BLAS comparisons, etc.).

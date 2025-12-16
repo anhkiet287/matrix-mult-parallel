@@ -28,6 +28,7 @@ export MPI_PERF_RUNS
 DEFAULT_OMP_FLAGS="-fopenmp"
 : "${MPICC:=mpicc}"
 : "${MPIRUN:=mpirun}"
+: "${MPIRUN_FLAGS:=--bind-to core}"
 : "${MPI_PROCS:=4}"
 : "${MPI_ALGORITHM:=}"
 : "${HYBRID_ALGORITHM:=}"
@@ -161,7 +162,14 @@ run_mpi_correctness() {
     local mode=${2:-mpi}
     local procs=${3:-$MPI_PROCS}
     pushd "$BUILD_DIR" >/dev/null
-    "$MPIRUN" -np "$procs" ./mpi_correctness_test "$algorithm" "$mode"
+    local mpirun_cmd=("$MPIRUN")
+    if [ -n "${MPIRUN_FLAGS:-}" ]; then
+        # shellcheck disable=SC2206
+        local mpirun_flags=($MPIRUN_FLAGS)
+        mpirun_cmd+=("${mpirun_flags[@]}")
+    fi
+    mpirun_cmd+=(-np "$procs" ./mpi_correctness_test "$algorithm" "$mode")
+    "${mpirun_cmd[@]}"
     popd >/dev/null
 }
 
@@ -170,7 +178,14 @@ run_mpi_performance() {
     local mode=$2
     local procs=${3:-$MPI_PROCS}
     pushd "$BUILD_DIR" >/dev/null
-    "$MPIRUN" -np "$procs" ./mpi_performance_test "$algorithm" "$mode"
+    local mpirun_cmd=("$MPIRUN")
+    if [ -n "${MPIRUN_FLAGS:-}" ]; then
+        # shellcheck disable=SC2206
+        local mpirun_flags=($MPIRUN_FLAGS)
+        mpirun_cmd+=("${mpirun_flags[@]}")
+    fi
+    mpirun_cmd+=(-np "$procs" ./mpi_performance_test "$algorithm" "$mode")
+    "${mpirun_cmd[@]}"
     popd >/dev/null
 }
 

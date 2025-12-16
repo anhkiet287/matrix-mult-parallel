@@ -118,7 +118,7 @@ static int *parse_sizes(const char *primary_env, const char *fallback_env, int *
 static void print_result_line(const experiment_record *rec) {
     printf("algo=%-8s approach=%-6s n=%5d nprocs=%2d nthreads=%2d "
            "time_med=%8.4fs (min=%8.4fs mean=%8.4fs max=%8.4fs) "
-           "gemm_eq_GF/s=%8.2f passed=%s\n",
+           "gemm_eq_GF/s=%8.2f",
            rec->algo,
            rec->approach,
            rec->n,
@@ -128,8 +128,11 @@ static void print_result_line(const experiment_record *rec) {
            rec->time_min,
            rec->time_mean,
            rec->time_max,
-           rec->gflops_gemm_eq,
-           rec->passed ? "true" : "false");
+           rec->gflops_gemm_eq);
+    if (rec->speedup_vs_naive > 0.0) {
+        printf(" speedup=%.2fx", rec->speedup_vs_naive);
+    }
+    printf(" passed=%s\n", rec->passed ? "true" : "false");
 }
 
 int main(int argc, char **argv) {
@@ -203,6 +206,8 @@ int main(int argc, char **argv) {
         double *C = NULL;
         double *baseline = NULL;
 
+        double baseline_time_sec = 0.0;
+
         if (rank == 0) {
             A = matrix_allocate(n);
             B = matrix_allocate(n);
@@ -221,7 +226,10 @@ int main(int argc, char **argv) {
             matrix_random_init(B, n);
             matrix_zero_init(C, n);
             matrix_zero_init(baseline, n);
+            double baseline_start = MPI_Wtime();
             matmul_serial(A, B, baseline, n);
+            double baseline_end = MPI_Wtime();
+            baseline_time_sec = baseline_end - baseline_start;
         } else {
             B = matrix_allocate(n);
             if (!B) {
@@ -269,6 +277,10 @@ int main(int argc, char **argv) {
             if (denom <= 0.0) denom = 1.0;
             double gflops = (2.0 * n * (double)n * (double)n) / (denom * 1e9);
             int passed = matrix_compare(C, baseline, n, tolerance);
+            double speedup = 0.0;
+            if (baseline_time_sec > 0.0 && stats.median > 0.0) {
+                speedup = baseline_time_sec / stats.median;
+            }
 
             experiment_record rec;
             memset(&rec, 0, sizeof(rec));
@@ -287,7 +299,7 @@ int main(int argc, char **argv) {
             rec.time_mean = stats.mean;
             rec.gflops_gemm_eq = gflops;
             rec.passed = passed;
-            rec.speedup_vs_naive = 0.0;
+            rec.speedup_vs_naive = speedup;
 
             print_result_line(&rec);
             experiment_logger_write(logger_ptr, &rec);
